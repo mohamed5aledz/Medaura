@@ -5,19 +5,119 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import DoctorCard from "@/components/home/doctorCard/doctorCard";
 import { useEffect, useState } from "react";
 import { t } from "@/i18n";
-import { bestDoctors as bestDoctorsData } from "@/constants/clinics";
 import { motion } from "framer-motion";
+
+const BEST_DOCTORS_API_URL =
+  "http://127.0.0.1:3001/api/doctors/best?limit=3";
+
+type BestDoctorApiItem = {
+  provider_type?: "doctor" | "staff" | string;
+  target_id?: number;
+  doctor_id?: number;
+  staff_id?: number | null;
+  clinic_id?: number | null;
+  full_name?: string;
+  specialist?: string;
+  consultation_price?: number;
+  photo?: string | null;
+  total_patients?: number;
+  average_rating?: number;
+};
+
+type BestDoctor = {
+  id: number;
+  clinicId?: number;
+  providerType: "doctor" | "staff";
+  name: string;
+  specialty: string;
+  rating: number;
+  price: number;
+  experience: number;
+  imageSrc?: string;
+};
+
+function mapBestDoctor(doctor: BestDoctorApiItem): BestDoctor {
+  const providerType = doctor.provider_type === "staff" ? "staff" : "doctor";
+  const id = Number(
+    providerType === "staff"
+      ? (doctor.staff_id ?? doctor.target_id)
+      : (doctor.doctor_id ?? doctor.target_id),
+  );
+  const rating = Number(doctor.average_rating ?? 0);
+
+  return {
+    id,
+    clinicId: doctor.clinic_id ?? undefined,
+    providerType,
+    name: doctor.full_name || "",
+    specialty: doctor.specialist || "",
+    rating: Number.isFinite(rating) ? rating : 0,
+    price: Number(doctor.consultation_price ?? 0),
+    experience: Number(doctor.total_patients ?? 0),
+    imageSrc: doctor.photo?.trim() || undefined,
+  };
+}
+
+function getBestDoctorProfileHref(doctor: BestDoctor) {
+  if (doctor.providerType === "doctor") {
+    return `/doctors/${doctor.id}`;
+  }
+
+  if (doctor.clinicId) {
+    return `/clinics/${doctor.clinicId}/book/${doctor.id}?from=home`;
+  }
+
+  return "";
+}
 
 export default function BestDoctors() {
   const [locale, setLocale] = useState("ar");
+  const [bestDoctorsData, setBestDoctorsData] = useState<BestDoctor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    function onLocale(e: any) {
-      setLocale(e?.detail || "ar");
+    function onLocale(event: Event) {
+      setLocale((event as CustomEvent<string>).detail || "ar");
     }
     window.addEventListener("localeChange", onLocale as EventListener);
     return () =>
       window.removeEventListener("localeChange", onLocale as EventListener);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function fetchBestDoctors() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await fetch(BEST_DOCTORS_API_URL, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch best doctors");
+        }
+
+        const data = (await response.json()) as {
+          doctors?: BestDoctorApiItem[];
+        };
+
+        setBestDoctorsData((data.doctors || []).map(mapBestDoctor));
+      } catch (error) {
+        if ((error as Error).name === "AbortError") return;
+        console.error("Best doctors fetch error:", error);
+        setError("Failed to load best doctors");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchBestDoctors();
+
+    return () => controller.abort();
   }, []);
 
   return (
@@ -67,31 +167,48 @@ export default function BestDoctors() {
       </motion.div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {bestDoctorsData.map((doc, i) => (
-          <motion.div
-            key={`${doc.clinicId}-${doc.id}`}
-            initial={{ opacity: 0, y: 60 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.2 }}
-            transition={{
-              duration: 0.7,
-              delay: i * 0.12,
-              ease: "easeOut",
-            }}
-          >
-            <DoctorCard
-              id={doc.id}
-              clinicId={doc.clinicId}
-              name={doc.name}
-              specialty={doc.specialty}
-              rating={doc.rating}
-              price={doc.price}
-              experience={doc.experience}
-              imageSrc={doc.imageSrc}
-              isFromHome={true}
+        {loading &&
+          Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-[420px] animate-pulse rounded-3xl border border-[#d9e3ff] bg-[#f5f8ff]"
             />
-          </motion.div>
-        ))}
+          ))}
+
+        {!loading && error && (
+          <p className="col-span-full text-center text-sm font-semibold text-red-600">
+            {error}
+          </p>
+        )}
+
+        {!loading &&
+          !error &&
+          bestDoctorsData.map((doc, i) => (
+            <motion.div
+              key={`${doc.providerType}-${doc.clinicId}-${doc.id}`}
+              initial={{ opacity: 0, y: 60 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{
+                duration: 0.7,
+                delay: i * 0.12,
+                ease: "easeOut",
+              }}
+            >
+              <DoctorCard
+                id={doc.id}
+                clinicId={doc.clinicId}
+                name={doc.name}
+                specialty={doc.specialty}
+                rating={doc.rating}
+                price={doc.price}
+                experience={doc.experience}
+                imageSrc={doc.imageSrc}
+                isFromHome={true}
+                profileHref={getBestDoctorProfileHref(doc)}
+              />
+            </motion.div>
+          ))}
       </div>
     </motion.section>
   );

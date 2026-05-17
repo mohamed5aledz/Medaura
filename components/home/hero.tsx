@@ -112,14 +112,14 @@ export default function Hero() {
               className="flex flex-wrap gap-3"
             >
               <Link
-                href="/auth/register"
+                href="/doctors"
                 className="rounded-full bg-[#1c3faa] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#162f80]"
               >
                 {t("hero.bookNow", locale)}
               </Link>
 
               <Link
-                href="/site/specialties"
+                href="/specialties"
                 className="rounded-full border border-[#1c3faa] bg-white px-6 py-3 text-sm font-bold text-[#1c3faa] transition hover:bg-[#edf2ff]"
               >
                 {t("hero.exploreSpecialties", locale)}

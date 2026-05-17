@@ -17,6 +17,7 @@ type DoctorCardProps = {
   experience: number;
   imageSrc?: string;
   isFromHome?: boolean;
+  profileHref?: string;
 };
 
 const DOCTOR_FALLBACK_IMAGE = "/images/blank-profile-picture.png";
@@ -31,6 +32,7 @@ export default function DoctorCard({
   experience,
   imageSrc = DOCTOR_FALLBACK_IMAGE,
   isFromHome = false,
+  profileHref,
 }: DoctorCardProps) {
   const router = useRouter();
   const [locale, setLocale] = useState("ar");
@@ -45,6 +47,11 @@ export default function DoctorCard({
   }, []);
 
   const handleBookNow = () => {
+    if (profileHref) {
+      router.push(profileHref);
+      return;
+    }
+
     if (clinicId) {
       const url = `/clinics/${clinicId}/book/${id}`;
       if (isFromHome) {

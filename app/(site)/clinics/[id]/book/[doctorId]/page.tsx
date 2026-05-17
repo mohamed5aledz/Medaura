@@ -31,9 +31,18 @@ type ApiStaffProfile = {
   work_to?: string;
   consultation_price?: number;
   rating?: number;
+  average_rating?: number;
+  total_ratings?: number;
   photo?: string | null;
   about?: string;
   verified?: boolean;
+  clinic_name?: string;
+  clinic_location?: string;
+  clinic_phone?: string;
+  clinic_average_rating?: number;
+  clinic_total_ratings?: number;
+  total_patients?: number;
+  total_bookings?: number;
   can_be_booked?: number | boolean;
 };
 
@@ -45,6 +54,9 @@ type ApiClinicProfile = {
   phone?: string;
   opening_hours?: string;
   image?: string;
+  photo?: string;
+  average_rating?: number;
+  total_ratings?: number;
 };
 
 type BookingSlot = {
@@ -73,7 +85,9 @@ function normalizeStaff(data: unknown): ApiStaffProfile | null {
 function normalizeClinic(data: unknown): ApiClinicProfile | null {
   const unwrapped = unwrapData(data);
   if (!isRecord(unwrapped)) return null;
-  return (unwrapped.clinic || unwrapped.profile || unwrapped) as ApiClinicProfile;
+  return (unwrapped.clinic ||
+    unwrapped.profile ||
+    unwrapped) as ApiClinicProfile;
 }
 
 function normalizeSlots(data: unknown): BookingSlot[] {
@@ -87,7 +101,9 @@ function normalizeSlots(data: unknown): BookingSlot[] {
   return slots
     .map((slot): BookingSlot => {
       const record = isRecord(slot) ? slot : {};
-      const from = String(record.from || record.time || record.booking_from || "");
+      const from = String(
+        record.from || record.time || record.booking_from || "",
+      );
       return {
         from,
         to: String(record.to || ""),
@@ -99,6 +115,36 @@ function normalizeSlots(data: unknown): BookingSlot[] {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function getSafeRating(value: unknown) {
+  const rating = Number(value);
+  return Number.isFinite(rating) ? rating : 0;
+}
+
+function RatingStars({
+  rating,
+  className = "h-4 w-4",
+}: {
+  rating: number;
+  className?: string;
+}) {
+  const roundedRating = Math.round(rating);
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {[...Array(5)].map((_, index) => (
+        <Star
+          key={index}
+          className={`${className} ${
+            index < roundedRating
+              ? "fill-[#f7b731] text-[#f7b731]"
+              : "text-[#d7deef]"
+          }`}
+        />
+      ))}
+    </div>
+  );
 }
 
 function formatDisplayDate(date: string, locale: string) {
@@ -180,10 +226,14 @@ export default function BookingPage() {
   const [selectedTime, setSelectedTime] = useState("");
   const [isBooking, setIsBooking] = useState(false);
   const [showValidationModal, setShowValidationModal] = useState(false);
-  const [locale, setLocale] = useState("en");
+  const [locale, setLocale] = useState(() =>
+    typeof window === "undefined"
+      ? "en"
+      : localStorage.getItem("locale") || "en",
+  );
   const [staff, setStaff] = useState<ApiStaffProfile | null>(null);
   const [clinicProfile, setClinicProfile] = useState<ApiClinicProfile | null>(
-    null
+    null,
   );
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState("");
@@ -197,9 +247,6 @@ export default function BookingPage() {
   } | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem("locale");
-    if (stored) setLocale(stored);
-
     const handleLocaleChange: EventListener = (event) => {
       setLocale((event as CustomEvent<string>).detail);
     };
@@ -231,7 +278,9 @@ export default function BookingPage() {
         const staffPayload = await staffResponse.json();
         if (!staffResponse.ok || staffPayload.success === false) {
           throw new Error(
-            staffPayload.error || staffPayload.message || "Failed to load staff"
+            staffPayload.error ||
+              staffPayload.message ||
+              "Failed to load staff",
           );
         }
 
@@ -250,8 +299,8 @@ export default function BookingPage() {
             error,
             locale === "ar"
               ? "تعذر تحميل بيانات الطبيب."
-              : "Failed to load staff profile."
-          )
+              : "Failed to load staff profile.",
+          ),
         );
       } finally {
         setProfileLoading(false);
@@ -283,7 +332,9 @@ export default function BookingPage() {
 
         if (!response.ok || payload.success === false) {
           throw new Error(
-            payload.error || payload.message || "Failed to load available slots"
+            payload.error ||
+              payload.message ||
+              "Failed to load available slots",
           );
         }
 
@@ -296,8 +347,8 @@ export default function BookingPage() {
             error,
             locale === "ar"
               ? "تعذر تحميل المواعيد المتاحة."
-              : "Failed to load available times."
-          )
+              : "Failed to load available times.",
+          ),
         );
       } finally {
         setSlotsLoading(false);
@@ -309,28 +360,54 @@ export default function BookingPage() {
 
   const doctorName = staff?.full_name || staff?.name || "";
   const doctorSpecialty = staff?.specialist || staff?.role_title || "";
-  const doctorRating = Number(staff?.rating || 0);
-  const canBeBooked = staff?.can_be_booked !== false && staff?.can_be_booked !== 0;
-  const clinicName = clinicProfile?.name || fallbackClinic?.name || "";
+  const clinicRating = getSafeRating(
+    clinicProfile?.average_rating ?? staff?.clinic_average_rating ?? 0,
+  );
+
+  const clinicRatingCount = Number(
+    clinicProfile?.total_ratings ?? staff?.clinic_total_ratings ?? 0,
+  );
+
+  // doctor(staff) rating
+  const doctorRating = getSafeRating(
+    staff?.average_rating ?? staff?.rating ?? 0,
+  );
+
+  const doctorRatingCount = Number(staff?.total_ratings ?? 0);
+  const canBeBooked =
+    staff?.can_be_booked !== false && staff?.can_be_booked !== 0;
+  const clinicName =
+    staff?.clinic_name || clinicProfile?.name || fallbackClinic?.name || "";
   const clinicAddress =
+    staff?.clinic_location ||
     clinicProfile?.address ||
     clinicProfile?.location ||
     fallbackClinic?.address ||
     "";
-  const clinicCity = clinicProfile?.location || fallbackClinic?.city || "";
-  const clinicPhone = clinicProfile?.phone || fallbackClinic?.phone || "";
+  const clinicCity =
+    staff?.clinic_location ||
+    clinicProfile?.location ||
+    fallbackClinic?.city ||
+    "";
+  const clinicPhone =
+    staff?.clinic_phone || clinicProfile?.phone || fallbackClinic?.phone || "";
   const clinicHours =
     clinicProfile?.opening_hours || fallbackClinic?.hours || "";
   const workingDays = staff?.work_days || "";
   const formattedWorkingDays = formatWorkingDays(workingDays, locale);
   const clinicImage =
-    clinicProfile?.image || fallbackClinic?.image || "/images/clinic1.png";
+    clinicProfile?.photo ||
+    clinicProfile?.image ||
+    fallbackClinic?.image ||
+    "/images/clinic1.png";
   const staffImage =
-    staff?.photo || fallbackClinic?.doctors?.[0]?.imageSrc || "/images/blank-profile-picture.png";
+    staff?.photo ||
+    fallbackClinic?.doctors?.[0]?.imageSrc ||
+    "/images/blank-profile-picture.png";
 
   const displayedDate = useMemo(
     () => formatDisplayDate(selectedDate, locale),
-    [locale, selectedDate]
+    [locale, selectedDate],
   );
 
   const openTimePicker = () => {
@@ -408,7 +485,7 @@ export default function BookingPage() {
 
       if (!response.ok || payload.success === false) {
         throw new Error(
-          payload.error || payload.message || "Failed to create booking"
+          payload.error || payload.message || "Failed to create booking",
         );
       }
 
@@ -423,23 +500,20 @@ export default function BookingPage() {
       setShowValidationModal(true);
       setSlots((current) =>
         current.map((slot) =>
-          slot.from === selectedTime ? { ...slot, available: false } : slot
-        )
+          slot.from === selectedTime ? { ...slot, available: false } : slot,
+        ),
       );
     } catch (error: unknown) {
       setValidationModalData({
         type: "warning",
         title:
+          locale === "ar" ? "تعذر إتمام الحجز" : "Could not complete booking",
+        message: getErrorMessage(
+          error,
           locale === "ar"
-            ? "تعذر إتمام الحجز"
-            : "Could not complete booking",
-        message:
-          getErrorMessage(
-            error,
-            locale === "ar"
             ? "حدث خطأ أثناء إنشاء الحجز."
-            : "Something went wrong while creating the booking."
-          ),
+            : "Something went wrong while creating the booking.",
+        ),
       });
       setShowValidationModal(true);
     } finally {
@@ -468,11 +542,11 @@ export default function BookingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="max-w-5xl mx-auto pt-32 pb-12 px-4">
+    <div className="min-h-screen bg-[#f6f8fc]">
+      <div className="mx-auto max-w-6xl px-4 pb-16 pt-28 sm:px-6 lg:px-8">
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-2 text-[#001A6E] font-bold mb-8 hover:opacity-80 transition-opacity"
+          className="mb-8 flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-[#001A6E] shadow-sm transition hover:bg-[#eef3ff]"
         >
           <ArrowRight
             className={`w-5 h-5 ${locale === "ar" ? "" : "rotate-180"}`}
@@ -480,110 +554,112 @@ export default function BookingPage() {
           {t("booking.back", locale)}
         </button>
 
-        <div className="flex flex-col lg:flex-row gap-12">
+        <div className="flex flex-col gap-8 lg:flex-row">
           <div
-            className={`flex-1 space-y-12 ${locale === "ar" ? "order-1 lg:order-1" : "order-1"}`}
+            className={`flex-1 space-y-8 ${locale === "ar" ? "order-1 lg:order-1" : "order-1"}`}
           >
-            <div className="flex flex-col md:flex-row gap-8 items-start">
-              <div className="w-full md:w-48 h-48 relative rounded-3xl overflow-hidden shadow-md shrink-0 bg-gray-50">
-                <Image
-                  src={staffImage}
-                  alt={doctorName}
-                  width={420}
-                  height={420}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="flex-1 space-y-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h1 className="text-2xl font-bold text-[#001A6E]">
-                      {doctorName}
-                    </h1>
-                    {formattedWorkingDays && (
-                      <span className="text-xs font-semibold text-[#001A6E] bg-blue-50 px-3 py-1 rounded-full">
-                        {locale === "ar"
-                          ? `ايام العمل: ${formattedWorkingDays}`
-                          : `Working days: ${formattedWorkingDays}`}
+            <div className="rounded-[28px] border border-[#dce5f6] bg-white p-5 shadow-[0_18px_55px_rgba(20,45,100,0.08)] sm:p-7">
+              <div className="flex flex-col items-start gap-8 md:flex-row">
+                <div className="relative h-56 w-full shrink-0 overflow-hidden rounded-3xl bg-[#eaf0fb] shadow-md md:h-52 md:w-52">
+                  <Image
+                    src={staffImage}
+                    alt={doctorName}
+                    width={420}
+                    height={420}
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="absolute left-4 top-4 inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1.5 text-sm font-bold text-[#001A6E] shadow">
+                    <Star className="h-4 w-4 fill-[#f7b731] text-[#f7b731]" />
+                    {doctorRating.toFixed(1)}
+                  </div>
+                </div>
+                <div className="flex-1 space-y-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h1 className="text-3xl font-extrabold text-[#001A6E]">
+                        {doctorName}
+                      </h1>
+                      {formattedWorkingDays && (
+                        <span className="text-xs font-semibold text-[#001A6E] bg-blue-50 px-3 py-1 rounded-full">
+                          {locale === "ar"
+                            ? `ايام العمل: ${formattedWorkingDays}`
+                            : `Working days: ${formattedWorkingDays}`}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-gray-500 font-medium">
+                      {t("specialties.doctors", locale)} {doctorSpecialty}
+                    </p>
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#fff7e3] px-4 py-2">
+                      <RatingStars rating={doctorRating} />
+                      <span className="text-sm font-bold text-[#7a4f00]">
+                        {doctorRating.toFixed(1)}
                       </span>
-                    )}
+                      {doctorRatingCount > 0 && (
+                        <span className="text-xs font-semibold text-[#8a7856]">
+                          ({doctorRatingCount})
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-gray-500 font-medium">
-                    {t("specialties.doctors", locale)} {doctorSpecialty}
-                  </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    {[...Array(5)].map((_, i) => (
-                      <Star
-                        key={i}
-                        className={`w-4 h-4 ${
-                          i < Math.floor(doctorRating)
-                            ? "text-yellow-400 fill-yellow-400"
-                            : "text-gray-300"
-                        }`}
-                      />
-                    ))}
-                    <span className="text-xs font-semibold text-gray-500">
-                      {doctorRating.toFixed(1)}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 p-4 rounded-2xl">
-                    <p className="text-xs text-gray-400 mb-1">
-                      {t("booking.sessionFee", locale)}
-                    </p>
-                    <p className="font-bold text-[#001A6E]">
-                      {staff.consultation_price ?? "-"}{" "}
-                      {locale === "ar" ? "ج.م" : "EGP"}
-                    </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-2xl bg-[#f4f7ff] p-4">
+                      <p className="text-xs text-gray-400 mb-1">
+                        {t("booking.sessionFee", locale)}
+                      </p>
+                      <p className="font-bold text-[#001A6E]">
+                        {staff.consultation_price ?? "-"}{" "}
+                        {locale === "ar" ? "ج.م" : "EGP"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-[#f4f7ff] p-4">
+                      <p className="text-xs text-gray-400 mb-1">
+                        {t("booking.city", locale)}
+                      </p>
+                      <p className="font-bold text-[#001A6E]">{clinicCity}</p>
+                    </div>
                   </div>
-                  <div className="bg-gray-50 p-4 rounded-2xl">
-                    <p className="text-xs text-gray-400 mb-1">
-                      {t("booking.city", locale)}
-                    </p>
-                    <p className="font-bold text-[#001A6E]">{clinicCity}</p>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => setShowDatePicker(true)}
+                      className="flex items-center gap-2 rounded-xl border border-[#dce5f6] px-4 py-2 text-sm font-semibold text-gray-500 transition-colors hover:bg-[#f4f7ff]"
+                    >
+                      <Calendar className="w-4 h-4 text-[#001A6E]" />
+                      {displayedDate || t("booking.datePlaceholder", locale)}
+                    </button>
+                    <button
+                      onClick={openTimePicker}
+                      className="flex items-center gap-2 rounded-xl border border-[#dce5f6] px-4 py-2 text-sm font-semibold text-gray-500 transition-colors hover:bg-[#f4f7ff]"
+                    >
+                      <Clock className="w-4 h-4 text-[#001A6E]" />
+                      {selectedTime || t("booking.timePlaceholder", locale)}
+                    </button>
                   </div>
-                </div>
 
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => setShowDatePicker(true)}
-                    className="flex items-center gap-2 text-sm text-gray-500 border border-gray-100 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors"
-                  >
-                    <Calendar className="w-4 h-4 text-[#001A6E]" />
-                    {displayedDate || t("booking.datePlaceholder", locale)}
-                  </button>
-                  <button
-                    onClick={openTimePicker}
-                    className="flex items-center gap-2 text-sm text-gray-500 border border-gray-100 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors"
-                  >
-                    <Clock className="w-4 h-4 text-[#001A6E]" />
-                    {selectedTime || t("booking.timePlaceholder", locale)}
-                  </button>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-4 pt-2">
-                  <button
-                    onClick={handleBookingClick}
-                    disabled={isBooking}
-                    className="flex-1 bg-[#001A6E] text-white py-4 rounded-2xl font-bold hover:bg-[#001250] transition-colors shadow-lg shadow-blue-900/10 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {isBooking
-                      ? locale === "ar"
-                        ? "جاري الحجز..."
-                        : "Booking..."
-                      : t("booking.bookNow", locale)}
-                  </button>
-                  <button className="flex items-center justify-center gap-2 border border-gray-200 text-gray-600 px-8 py-4 rounded-2xl font-bold hover:bg-gray-50 transition-colors">
-                    <Mail className="w-5 h-5" />
-                    {t("booking.sendMessage", locale)}
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-4 pt-2">
+                    <button
+                      onClick={handleBookingClick}
+                      disabled={isBooking}
+                      className="flex-1 rounded-2xl bg-[#001A6E] py-4 font-bold text-white shadow-lg shadow-blue-900/10 transition-colors hover:bg-[#162f80] disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {isBooking
+                        ? locale === "ar"
+                          ? "جاري الحجز..."
+                          : "Booking..."
+                        : t("booking.bookNow", locale)}
+                    </button>
+                    <button className="flex items-center justify-center gap-2 rounded-2xl border border-[#dce5f6] px-8 py-4 font-bold text-gray-600 transition-colors hover:bg-[#f4f7ff]">
+                      <Mail className="w-5 h-5" />
+                      {t("booking.sendMessage", locale)}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <section>
+            <section className="rounded-[28px] border border-[#dce5f6] bg-white p-6 shadow-sm">
               <h2 className="text-xl font-bold text-[#001A6E] mb-4">
                 {t("booking.aboutDoctor", locale)}
               </h2>
@@ -599,7 +675,7 @@ export default function BookingPage() {
           <div
             className={`lg:w-80 shrink-0 ${locale === "ar" ? "order-2 lg:order-2" : "order-2"}`}
           >
-            <div className="bg-white border border-gray-100 rounded-4xl p-6 shadow-sm sticky top-32">
+            <div className="sticky top-28 rounded-[28px] border border-[#dce5f6] bg-white p-6 shadow-[0_18px_55px_rgba(20,45,100,0.08)]">
               <h2 className="text-xl font-bold text-[#001A6E] mb-6">
                 {t("booking.clinicInfo", locale)}
               </h2>
@@ -616,9 +692,16 @@ export default function BookingPage() {
 
               <div className="space-y-6">
                 <div>
-                  <h3 className="font-bold text-gray-800 mb-1">
-                    {clinicName}
-                  </h3>
+                  <h3 className="font-bold text-gray-800 mb-1">{clinicName}</h3>
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#fff7e3] px-3 py-1.5 text-sm font-bold text-[#7a4f00]">
+                    <RatingStars rating={clinicRating} />
+                    <span>{clinicRating.toFixed(1)}</span>
+                    {clinicRatingCount > 0 && (
+                      <span className="text-xs text-[#8a7856]">
+                        ({clinicRatingCount})
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-start gap-2 text-gray-400 text-sm">
                     <MapPin className="w-4 h-4 mt-1 shrink-0" />
                     <span>{clinicAddress}</span>
@@ -635,7 +718,8 @@ export default function BookingPage() {
                     {t("booking.workingHours", locale)}
                   </h3>
                   <p className="text-gray-400 text-sm leading-relaxed">
-                    {clinicHours || `${staff.work_from || ""} - ${staff.work_to || ""}`}
+                    {clinicHours ||
+                      `${staff.work_from || ""} - ${staff.work_to || ""}`}
                   </p>
                 </div>
               </div>
@@ -643,25 +727,28 @@ export default function BookingPage() {
           </div>
         </div>
 
-        <div className="mt-20 py-12 border-t border-b border-gray-100">
+        <div className="mt-12 rounded-[28px] border border-[#dce5f6] bg-white p-6 shadow-sm sm:p-10">
           <div className="text-center mb-12">
             <h2 className="text-2xl font-bold text-[#001A6E] mb-4">
               {t("booking.patientReviews", locale)}
             </h2>
             <div className="flex flex-col items-center">
-              <div className="flex gap-1 mb-3">
-                {[...Array(5)].map((_, i) => (
-                  <Star
-                    key={i}
-                    className="w-6 h-6 text-yellow-400 fill-yellow-400"
-                  />
-                ))}
+              <div className="mb-3">
+                <RatingStars rating={doctorRating} className="h-7 w-7" />
               </div>
+              <p className="text-4xl font-extrabold text-[#001A6E]">
+                {doctorRating.toFixed(1)}
+              </p>
               <p className="font-bold text-lg text-gray-800">
                 {t("booking.overallRating", locale)}
               </p>
               <p className="text-gray-400 text-sm">
-                {t("booking.fromVisitors", locale)}
+                {doctorRatingCount > 0
+                  ? t("clinics.fromVisitors", locale).replace(
+                      "{count}",
+                      String(doctorRatingCount),
+                    )
+                  : t("booking.fromVisitors", locale)}
               </p>
             </div>
           </div>

@@ -1,6 +1,16 @@
-/// <reference types="next" />
-/// <reference types="next/image-types/global" />
-import "./.next/dev/types/routes.d.ts";
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {
+    root: "C:\\Projects\\Medaura",
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
+    ],
+  },
+};
 
-// NOTE: This file should not be edited
-// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+export default nextConfig;
