@@ -33,7 +33,7 @@ type EditProfileFormProps = {
 const GeoLocationPicker = dynamic(() => import("./GeoLocationPicker"), {
   ssr: false,
   loading: () => (
-    <div className="flex min-h-[320px] items-center justify-center rounded-lg border border-(--card-border) bg-(--semi-card-bg) text-sm text-(--text-secondary)">
+    <div className="flex min-h-80 items-center justify-center rounded-lg border border-(--card-border) bg-(--semi-card-bg) text-sm text-(--text-secondary)">
       Loading map...
     </div>
   ),
@@ -102,48 +102,40 @@ function toNullableString(value: string) {
 
 function buildRequestPayload(formData: DoctorEditableProfile) {
   return {
-    profile: {
-      full_name: formData.full_name.trim(),
-      phone: toNullableString(formData.phone),
-      gender: toNullableString(formData.gender),
-      years_of_experience:
-        formData.years_of_experience === ""
-          ? null
-          : toRequiredNumber(formData.years_of_experience, "Years of experience"),
-      bio: toNullableString(formData.bio),
-      consultation_price: toRequiredNumber(
-        formData.consultation_price,
-        "Consultation price"
-      ),
-      work_from: formData.work_from,
-      work_to: formData.work_to,
-      work_days: formData.work_days,
-      location: toNullableString(formData.location),
-      geo_location: {
-        latitude: toRequiredNumber(formData.geo_location.latitude, "Latitude"),
-        longitude: toRequiredNumber(
-          formData.geo_location.longitude,
-          "Longitude"
-        ),
-      },
-    },
+    full_name: formData.full_name.trim(),
+    phone: toNullableString(formData.phone),
+    gender: toNullableString(formData.gender),
+
+    years_of_experience:
+      formData.years_of_experience === ""
+        ? ""
+        : String(formData.years_of_experience),
+
+    bio: toNullableString(formData.bio),
+
+    consultation_price:
+      formData.consultation_price === ""
+        ? ""
+        : String(formData.consultation_price),
+
+    work_from: formData.work_from,
+    work_to: formData.work_to,
+    work_days: formData.work_days,
+    location: toNullableString(formData.location),
+
+    latitude: String(formData.geo_location.latitude),
+    longitude: String(formData.geo_location.longitude),
   };
 }
 
 function appendPayloadToFormData(
   body: FormData,
-  payload: ReturnType<typeof buildRequestPayload>
+  payload: ReturnType<typeof buildRequestPayload>,
 ) {
   Object.entries(payload).forEach(([key, value]) => {
-    if (key === "profile") {
-      body.append(key, JSON.stringify(value));
-      return;
-    }
-
     body.append(key, value === null ? "" : String(value));
   });
 }
-
 export default function EditProfileForm({
   onClose,
   initialData,
@@ -233,10 +225,10 @@ export default function EditProfileForm({
       const response = await fetch("/api/user/me", requestInit);
       const result = await response.json();
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to update profile");
+      
+      if (!response.ok || result.status !== "success") {
+        throw new Error(result.message || "Failed to update profile");
       }
-
       setSuccess(true);
       onSuccess?.(getUpdatedProfile(result) ?? {});
 
