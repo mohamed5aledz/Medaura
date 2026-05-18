@@ -13,7 +13,7 @@ export function getDashboardPathByUserType(
       return "/doctorDash";
     case "admin":
     case "staff":
-      return "/dashboard";
+      return "/doctorDash";
     case "patient":
     case "clinic":
     default:
